@@ -183,7 +183,7 @@ class _PetTrackerScreenState extends State<PetTrackerScreen> {
                 }
                 final pets = snapshot.data!;
                 return DropdownButtonFormField<String>(
-                  value: _selectedPet,
+                  initialValue: _selectedPet,
                   decoration: const InputDecoration(
                     labelText: 'Select Pet *',
                     border: OutlineInputBorder(),
@@ -258,7 +258,7 @@ class _PetTrackerScreenState extends State<PetTrackerScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _selectedDeviceType,
+              initialValue: _selectedDeviceType,
               decoration: const InputDecoration(
                 labelText: 'Device Type',
                 border: OutlineInputBorder(),
@@ -344,7 +344,7 @@ class _PetTrackerScreenState extends State<PetTrackerScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              value: _selectedStatus,
+              initialValue: _selectedStatus,
               decoration: const InputDecoration(
                 labelText: 'Status',
                 border: OutlineInputBorder(),
