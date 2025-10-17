@@ -9,6 +9,16 @@ class AnalyticsData {
   final List<FlSpot> trackerActivity;
   final List<double> qrCodeScans;
   final List<FlSpot> announcementEngagement;
+  // Analytics from petRequests
+  final Map<String, double> vaccinationStatus;
+  final List<MapEntry<String, int>> topBreeds;
+  final List<MapEntry<String, int>> ageDistribution;
+  final List<FlSpot> requestTimeline;
+  final Map<String, double> genderDistribution;
+  final List<MapEntry<String, double>> petTypeDistribution;
+  final double totalRequests;
+  final double vaccinationRate;
+  final double averageAge;
 
   AnalyticsData({
     required this.userGrowth,
@@ -16,6 +26,15 @@ class AnalyticsData {
     required this.trackerActivity,
     required this.qrCodeScans,
     required this.announcementEngagement,
+    required this.vaccinationStatus,
+    required this.topBreeds,
+    required this.ageDistribution,
+    required this.requestTimeline,
+    required this.genderDistribution,
+    required this.petTypeDistribution,
+    required this.totalRequests,
+    required this.vaccinationRate,
+    required this.averageAge,
   });
 }
 
@@ -65,30 +84,9 @@ class AnalyticsService {
     }
 
     try {
-      // Fetch users data
-      final usersSnapshot = await _firestore.collection('users').get();
-
-      // Calculate user growth over time
-      final userGrowth = await _calculateUserGrowth(usersSnapshot.docs);
-
-      // Calculate pet distribution (now based on pets collection)
-      final petDistribution = await _calculatePetDistribution();
-
-      // Calculate tracker activity
-      final trackerActivity = await _calculateTrackerActivity();
-
-      // Calculate announcement engagement
-      final announcementEngagement = await _calculateAnnouncementEngagement();
-
+      final analyticsData = await _fetchAllAnalytics();
+      
       if (!(_analyticsController?.isClosed ?? true)) {
-        final analyticsData = AnalyticsData(
-          userGrowth: userGrowth,
-          petDistribution: petDistribution,
-          trackerActivity: trackerActivity,
-          qrCodeScans: [],
-          announcementEngagement: announcementEngagement,
-        );
-
         _analyticsController?.add(analyticsData);
       }
     } catch (e) {
@@ -128,7 +126,7 @@ class AnalyticsService {
 
     final petsSnapshot = await _firestore.collection('pets').get();
     for (var doc in petsSnapshot.docs) {
-      final data = doc.data() as Map<String, dynamic>;
+      final data = doc.data();
       final type = (data['type'] as String?)?.toLowerCase();
       switch (type) {
         case 'dog':
@@ -188,5 +186,263 @@ class AnalyticsService {
     }
 
     return result;
+  }
+
+  Future<Map<String, double>> _calculateGenderDistribution() async {
+    final Map<String, double> distribution = {};
+
+    try {
+      final requests = await _firestore.collection('petRequests').get();
+      if (requests.docs.isEmpty) return {};
+
+      for (var doc in requests.docs) {
+        final data = doc.data();
+        final gender = data['gender']?.toString().trim();
+        if (gender != null && gender.isNotEmpty) {
+          distribution[gender] = (distribution[gender] ?? 0) + 1;
+        }
+      }
+    } catch (e) {
+      print('Error calculating gender distribution: $e');
+    }
+
+    return distribution;
+  }
+
+  Future<List<MapEntry<String, double>>> _calculatePetTypeDistribution() async {
+    final Map<String, double> distribution = {};
+
+    try {
+      final requests = await _firestore.collection('petRequests').get();
+      if (requests.docs.isEmpty) return [];
+
+      for (var doc in requests.docs) {
+        final data = doc.data();
+        final petType = data['petType']?.toString().trim();
+        if (petType != null && petType.isNotEmpty) {
+          distribution[petType] = (distribution[petType] ?? 0) + 1;
+        }
+      }
+
+      final entries = distribution.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      return entries;
+    } catch (e) {
+      print('Error calculating pet type distribution: $e');
+      return [];
+    }
+  }
+
+  Future<double> _calculateAverageAge() async {
+    try {
+      final requests = await _firestore.collection('petRequests').get();
+      if (requests.docs.isEmpty) return 0;
+
+      var totalAge = 0.0;
+      var count = 0;
+      final now = DateTime.now();
+
+      for (var doc in requests.docs) {
+        final data = doc.data();
+        final birthDateStr = data['birthDate']?.toString();
+        
+        if (birthDateStr != null) {
+          try {
+            final birthDate = DateTime.parse(birthDateStr);
+            final age = now.difference(birthDate).inDays / 365;
+            totalAge += age;
+            count++;
+          } catch (e) {
+            print('Error parsing birth date: $e');
+          }
+        }
+      }
+
+      return count > 0 ? totalAge / count : 0;
+    } catch (e) {
+      print('Error calculating average age: $e');
+      return 0;
+    }
+  }
+
+  Future<Map<String, double>> _calculateVaccinationStatus() async {
+    final Map<String, double> status = {'Vaccinated': 0, 'Not Vaccinated': 0};
+
+    try {
+      final requests = await _firestore.collection('petRequests').get();
+      if (requests.docs.isEmpty) return {};
+
+      for (var doc in requests.docs) {
+        final data = doc.data();
+        if (data['isVaccinated'] == true || data['vaccinationStatus']?.toString().toLowerCase() == 'vaccinated') {
+          status['Vaccinated'] = (status['Vaccinated'] ?? 0) + 1;
+        } else {
+          status['Not Vaccinated'] = (status['Not Vaccinated'] ?? 0) + 1;
+        }
+      }
+    } catch (e) {
+      print('Error calculating vaccination status: $e');
+      return {};
+    }
+
+    return status;
+  }
+
+  Future<List<MapEntry<String, int>>> _calculateTopBreeds() async {
+    final Map<String, int> breeds = {};
+
+    try {
+      final requests = await _firestore.collection('petRequests').get();
+      if (requests.docs.isEmpty) return [];
+
+      for (var doc in requests.docs) {
+        final data = doc.data();
+        final breed = data['breed']?.toString().trim();
+        if (breed != null && breed.isNotEmpty) {
+          breeds[breed] = (breeds[breed] ?? 0) + 1;
+        }
+      }
+
+      // Sort breeds by count and take top 5
+      final sortedBreeds = breeds.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      return sortedBreeds.take(5).toList();
+    } catch (e) {
+      print('Error calculating top breeds: $e');
+      return [];
+    }
+  }
+
+  Future<List<MapEntry<String, int>>> _calculateAgeDistribution() async {
+    final Map<String, int> ages = {
+      '< 1 year': 0,
+      '1-3 years': 0,
+      '3-5 years': 0,
+      '5-10 years': 0,
+      '10+ years': 0,
+    };
+
+    try {
+      final requests = await _firestore.collection('petRequests').get();
+      if (requests.docs.isEmpty) return [];
+      
+      final now = DateTime.now();
+
+      for (var doc in requests.docs) {
+        final data = doc.data();
+        final birthDateStr = data['birthDate']?.toString();
+        
+        if (birthDateStr != null) {
+          try {
+            final birthDate = DateTime.parse(birthDateStr);
+            final age = now.difference(birthDate).inDays / 365;
+
+            if (age < 1) ages['< 1 year'] = (ages['< 1 year'] ?? 0) + 1;
+            else if (age < 3) ages['1-3 years'] = (ages['1-3 years'] ?? 0) + 1;
+            else if (age < 5) ages['3-5 years'] = (ages['3-5 years'] ?? 0) + 1;
+            else if (age < 10) ages['5-10 years'] = (ages['5-10 years'] ?? 0) + 1;
+            else ages['10+ years'] = (ages['10+ years'] ?? 0) + 1;
+          } catch (e) {
+            print('Error parsing birth date: $e');
+          }
+        }
+      }
+
+      // Only return non-zero entries
+      return ages.entries.where((e) => e.value > 0).toList();
+    } catch (e) {
+      print('Error calculating age distribution: $e');
+      return [];
+    }
+  }
+
+  Future<List<FlSpot>> _calculateRequestTimeline() async {
+    try {
+      final Map<String, int> dailyRequests = {};
+      
+      final requests = await _firestore
+          .collection('petRequests')
+          .orderBy('createdAt', descending: true)
+          .get();
+
+      if (requests.docs.isEmpty) return [];
+
+      // Get requests for the last 30 days
+      final now = DateTime.now();
+      final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+
+      for (var doc in requests.docs) {
+        final data = doc.data();
+        final createdAt = data['createdAt'] as Timestamp?;
+        if (createdAt != null) {
+          final date = createdAt.toDate();
+          if (date.isAfter(thirtyDaysAgo)) {
+            final key = DateFormat('yyyy-MM-dd').format(date);
+            dailyRequests[key] = (dailyRequests[key] ?? 0) + 1;
+          }
+        }
+      }
+
+      if (dailyRequests.isEmpty) return [];
+
+      // Convert to spots
+      final spots = <FlSpot>[];
+      var index = 0.0;
+      final sortedDates = dailyRequests.keys.toList()..sort();
+      
+      for (var date in sortedDates) {
+        spots.add(FlSpot(index, dailyRequests[date]!.toDouble()));
+        index++;
+      }
+
+      return spots;
+    } catch (e) {
+      print('Error calculating request timeline: $e');
+      return [];
+    }
+  }
+
+  Future<AnalyticsData> _fetchAllAnalytics() async {
+    final usersSnapshot = await _firestore.collection('users').get();
+    final requestsSnapshot = await _firestore.collection('petRequests').get();
+    final requestCount = requestsSnapshot.size.toDouble();
+    
+    final userGrowth = await _calculateUserGrowth(usersSnapshot.docs);
+    final petDistribution = await _calculatePetDistribution();
+    final trackerActivity = await _calculateTrackerActivity();
+    final announcementEngagement = await _calculateAnnouncementEngagement();
+    
+    // Pet requests analytics
+    final vaccinationStatus = await _calculateVaccinationStatus();
+    final topBreeds = await _calculateTopBreeds();
+    final ageDistribution = await _calculateAgeDistribution();
+    final requestTimeline = await _calculateRequestTimeline();
+    final genderDistribution = await _calculateGenderDistribution();
+    final petTypeDistribution = await _calculatePetTypeDistribution();
+    final averageAge = await _calculateAverageAge();
+
+    // Calculate vaccination rate
+    double vaccinationRate = 0;
+    if (vaccinationStatus.isNotEmpty && requestCount > 0) {
+      final vaccinated = vaccinationStatus['Vaccinated'] ?? 0;
+      vaccinationRate = vaccinated / requestCount;
+    }
+
+    return AnalyticsData(
+      userGrowth: userGrowth,
+      petDistribution: petDistribution,
+      trackerActivity: trackerActivity,
+      qrCodeScans: [],
+      announcementEngagement: announcementEngagement,
+      vaccinationStatus: vaccinationStatus,
+      topBreeds: topBreeds,
+      ageDistribution: ageDistribution,
+      requestTimeline: requestTimeline,
+      genderDistribution: genderDistribution,
+      petTypeDistribution: petTypeDistribution,
+      totalRequests: requestCount,
+      vaccinationRate: vaccinationRate,
+      averageAge: averageAge,
+    );
   }
 }

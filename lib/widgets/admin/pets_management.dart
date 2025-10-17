@@ -1079,7 +1079,7 @@ Vaccination: ${requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated'}
 
       // Draw white background
       final paint = Paint()..color = const Color(0xFFFFFFFF);
-      canvas.drawRect(Rect.fromLTWH(0, 0, size, size), paint);
+      canvas.drawRect(const Rect.fromLTWH(0, 0, size, size), paint);
 
       // Draw the QR code on top
       final painter = QrPainter.withQr(
@@ -1087,7 +1087,7 @@ Vaccination: ${requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated'}
         color: const Color(0xFF000000),
         gapless: true,
       );
-      painter.paint(canvas, Size(size, size));
+      painter.paint(canvas, const Size(size, size));
 
       // Convert to image
       final image =

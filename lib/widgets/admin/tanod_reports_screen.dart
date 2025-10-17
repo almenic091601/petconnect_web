@@ -1,6 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+
+// Conditional import: use web printing implementation when running on web,
+// otherwise use a stub that reports unsupported.
+import 'web_printing.dart';
 
 class TanodReportsScreen extends StatefulWidget {
   const TanodReportsScreen({super.key});
@@ -34,6 +40,185 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
     setState(() {});
   }
 
+  String _escapeHtml(String text) {
+    return text
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
+  }
+
+  String _generateHtmlForReports(List<QueryDocumentSnapshot> reports) {
+    final buffer = StringBuffer();
+    final formatter = DateFormat('MMMM d, yyyy h:mm a');
+    
+    // Add print-specific styles
+    buffer.write('''
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Tanod Reports</title>
+          <style>
+            @media print {
+              body { 
+                margin: 0;
+                padding: 12px;
+                font-family: Arial, sans-serif;
+              }
+              table { 
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 20px;
+                font-size: 10px;
+              }
+              th, td { 
+                padding: 4px 6px;
+                text-align: left;
+                border: 1px solid #ddd;
+                vertical-align: top;
+              }
+              th { 
+                background-color: #f5f5f5 !important;
+                -webkit-print-color-adjust: exact;
+                font-weight: bold;
+                font-size: 10px;
+              }
+              h1 { 
+                margin-bottom: 12px; 
+                font-size: 18px;
+              }
+              .report-header { margin-bottom: 12px; }
+              .timestamp { 
+                color: #666; 
+                font-size: 10px;
+              }
+              .details { 
+                max-width: 250px;
+                word-wrap: break-word;
+                line-height: 1.1;
+              }
+              .detail-row {
+                margin: 1px 0;
+                padding: 0;
+              }
+              .detail-row small {
+                font-size: 9px;
+                color: #333;
+                display: block;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="report-header">
+            <h1>Tanod Reports Summary</h1>
+            <p class="timestamp">Generated on ${formatter.format(DateTime.now())}</p>
+            <p>Total Reports: ${reports.length}</p>
+            <hr>
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Report ID</th>
+                <th>Date</th>
+                <th>Tanod ID</th>
+                <th>Location</th>
+                <th>Pet Details</th>
+              </tr>
+            </thead>
+            <tbody>
+    ''');
+
+    // Add each report as a row
+    for (var doc in reports) {
+      final data = doc.data() as Map<String, dynamic>;
+      final createdAt = data['createdAt'] as Timestamp;
+      final date = formatter.format(createdAt.toDate());
+      
+      // Parse and format pet details
+      String rawDetails = data['details']?.toString() ?? '{}';
+      
+      // Convert the raw string into proper JSON format
+      Map<String, dynamic> details = {};
+      try {
+        // Remove curly braces and split by comma
+        String cleaned = rawDetails.replaceAll('{', '').replaceAll('}', '');
+        List<String> pairs = cleaned.split(',').map((s) => s.trim()).toList();
+        
+        // Convert each key-value pair into proper JSON format
+        for (String pair in pairs) {
+          List<String> keyValue = pair.split(':').map((s) => s.trim()).toList();
+          if (keyValue.length == 2) {
+            String key = keyValue[0];
+            String value = keyValue[1];
+            details[key] = value;
+          }
+        }
+      } catch (e) {
+        print('Error parsing details: $e');
+        print('Raw details: $rawDetails');
+      }
+
+      // Format the birthdate if present
+      String birthDate = details['birthDate'] ?? 'N/A';
+      if (birthDate != 'N/A') {
+        try {
+          final date = DateTime.parse(birthDate);
+          birthDate = DateFormat('MM/dd/yyyy').format(date);
+        } catch (e) {
+          // Keep original if parsing fails
+        }
+      }
+
+      // Format the birth date
+      String formattedDate = 'N/A';
+      if (details['birthDate'] != null) {
+        try {
+          // Extract just the date part and parse it
+          String dateStr = details['birthDate'].toString().split('T')[0];
+          DateTime date = DateTime.parse(dateStr);
+          formattedDate = DateFormat('MM/dd/yyyy').format(date);
+        } catch (e) {
+          print('Error formatting date: $e');
+        }
+      }
+      
+      final formattedDetails = '''
+        <div class="details">
+          <div class="detail-row"><small>Pet: ${_escapeHtml(details['petName'] ?? 'N/A')} (${_escapeHtml(details['type'] ?? 'N/A')})</small></div>
+          <div class="detail-row"><small>Owner: ${_escapeHtml(details['ownerName'] ?? 'N/A')}</small></div>
+          <div class="detail-row"><small>Breed: ${_escapeHtml(details['breed'] ?? 'N/A')}</small></div>
+          <div class="detail-row"><small>Birth: $formattedDate</small></div>
+          <div class="detail-row"><small>Status: ${_escapeHtml(details['vaccinationStatus'] ?? 'N/A')}</small></div>
+        </div>
+      ''';
+      
+      buffer.write('''
+              <tr>
+                <td>${_escapeHtml(doc.id.substring(0, 8))}</td>
+                <td>${_escapeHtml(date)}</td>
+                <td>${_escapeHtml(data['tanodId']?.toString() ?? 'N/A')}</td>
+                <td>${_escapeHtml(data['location']?.toString() ?? 'No location')}</td>
+                <td>$formattedDetails</td>
+              </tr>
+      ''');
+    }
+
+    buffer.write('''
+            </tbody>
+          </table>
+        </body>
+      </html>
+    ''');
+
+    return buffer.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -41,10 +226,65 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          const Text(
-            'Tanod Reports',
-            style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+          // Header with Print button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Tanod Reports',
+                style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.print),
+                label: const Text('Print All'),
+                onPressed: () async {
+                  try {
+                    // Show loading indicator
+                    if (!mounted) return;
+                    showDialog(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (context) => const Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+
+                    // Fetch reports
+                    final snapshot = await _firestore
+                        .collection('tanod_reports')
+                        .orderBy('createdAt', descending: true)
+                        .get();
+
+                    if (!mounted) return;
+                    Navigator.of(context).pop(); // Remove loading
+
+                    if (snapshot.docs.isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('No reports to print')),
+                      );
+                      return;
+                    }
+
+                    // Print directly without confirmation
+                    final html = _generateHtmlForReports(snapshot.docs);
+                    try {
+                      await WebPrinting.printHtml(html);
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Print failed: $e')),
+                      );
+                    }
+                  } catch (e) {
+                    if (!mounted) return;
+                    Navigator.of(context).pop(); // Remove loading if shown
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to prepare print preview: $e')),
+                    );
+                  }
+                },
+              ),
+            ],
           ),
           const SizedBox(height: 8),
           Text(
@@ -76,15 +316,15 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.error, size: 64, color: Colors.red),
-                          SizedBox(height: 16),
+                          const Icon(Icons.error, size: 64, color: Colors.red),
+                          const SizedBox(height: 16),
                           Text('Error: ${snapshot.error}'),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           ElevatedButton(
                             onPressed: () {
                               setState(() {}); // Refresh
                             },
-                            child: Text('Retry'),
+                            child: const Text('Retry'),
                           ),
                         ],
                       ),
@@ -103,24 +343,24 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.report_outlined,
+                          const Icon(Icons.report_outlined,
                               size: 64, color: Colors.grey),
-                          SizedBox(height: 16),
-                          Text(
+                          const SizedBox(height: 16),
+                          const Text(
                             'No reports found',
                             style: TextStyle(fontSize: 18, color: Colors.grey),
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Text(
                             'Total in Firestore: ${reports.length}, After filtering: ${filteredReports.length}',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
                           ),
-                          SizedBox(height: 8),
+                          const SizedBox(height: 8),
                           Text(
                             'Current filter: $_selectedFilter, Sort: $_selectedSort',
-                            style: TextStyle(color: Colors.grey, fontSize: 12),
+                            style: const TextStyle(color: Colors.grey, fontSize: 12),
                           ),
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           ElevatedButton(
                             onPressed: () {
                               setState(() {
@@ -128,7 +368,7 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
                                 _selectedSort = 'Newest';
                               });
                             },
-                            child: Text('Reset Filters'),
+                            child: const Text('Reset Filters'),
                           ),
                         ],
                       ),
@@ -165,6 +405,8 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
               date.month == today.month &&
               date.day == today.day;
         }).length;
+        
+        
 
         // Since status field doesn't exist in your structure, we'll show different stats
         final recentReports = reports.where((doc) {
@@ -317,9 +559,11 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
     return _firestore.collection('tanod_reports').snapshots();
   }
 
-  List<QueryDocumentSnapshot> _filterReports(
+    List<QueryDocumentSnapshot> _filterReports(
       List<QueryDocumentSnapshot> reports) {
     List<QueryDocumentSnapshot> filtered = reports;
+
+    Map<String, dynamic> detailsData = {};
 
     // Apply location filter
     if (_selectedFilter != 'All') {
@@ -344,7 +588,19 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
         final tanodId = (data['tanodId'] as String?)?.toLowerCase() ?? '';
         final title = (data['title'] as String?)?.toLowerCase() ?? '';
         final location = (data['location'] as String?)?.toLowerCase() ?? '';
-        final details = (data['details'] as String?)?.toLowerCase() ?? '';
+        final details = data["details"];
+        if (details is Map<String, dynamic>) {
+          detailsData = details;
+        } else if (details is String) {
+          try {
+            detailsData = Map<String, dynamic>.from(jsonDecode(details));
+          } catch (e) {
+            print('Error parsing details string: $e');
+          }
+        }
+
+        final petId = detailsData['petId'] ?? 'N/A';
+        print('Pet ID: $petId');
 
         return tanodId.contains(searchTerm) ||
             title.contains(searchTerm) ||
@@ -357,6 +613,8 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
   }
 
   Widget _buildReportsTable(List<QueryDocumentSnapshot> reports) {
+
+
     return SingleChildScrollView(
       controller: _scrollController,
       child: SingleChildScrollView(

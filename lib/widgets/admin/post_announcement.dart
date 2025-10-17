@@ -114,7 +114,7 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
                   SizedBox(
                     width: 200,
                     child: DropdownButtonFormField<String>(
-                      value: _selectedType,
+                      initialValue: _selectedType,
                       decoration: const InputDecoration(
                         labelText: 'Type',
                         border: OutlineInputBorder(),
@@ -140,7 +140,7 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
                   SizedBox(
                     width: 200,
                     child: DropdownButtonFormField<String>(
-                      value: _selectedPriority,
+                      initialValue: _selectedPriority,
                       decoration: const InputDecoration(
                         labelText: 'Priority',
                         border: OutlineInputBorder(),
@@ -486,7 +486,7 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: type,
+                initialValue: type,
                 decoration: const InputDecoration(labelText: 'Type'),
                 items: const [
                   DropdownMenuItem(value: 'General', child: Text('General')),
@@ -500,7 +500,7 @@ class _PostAnnouncementScreenState extends State<PostAnnouncementScreen> {
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<String>(
-                value: priority,
+                initialValue: priority,
                 decoration: const InputDecoration(labelText: 'Priority'),
                 items: const [
                   DropdownMenuItem(value: 'Low', child: Text('Low')),

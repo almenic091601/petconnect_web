@@ -72,7 +72,7 @@ class AdminDashboardState extends State<AdminDashboard> {
 
       int newReports = 0;
       for (var doc in snapshot.docs) {
-        final data = doc.data() as Map<String, dynamic>;
+        final data = doc.data();
         final createdAt = data['createdAt'] as Timestamp?;
         if (createdAt != null && createdAt.toDate().isAfter(yesterday)) {
           newReports++;
