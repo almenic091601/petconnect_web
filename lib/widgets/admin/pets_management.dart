@@ -778,16 +778,57 @@ class _PetsManagementScreenState extends State<PetsManagementScreen>
                     icon: const Icon(Icons.download),
                     label: const Text('Download QR Code'),
                   ),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      // Open in new tab and print
-                      html.window.open(qrCodeUrl, '_blank');
-                      html.window.print();
-                      Navigator.pop(context);
-                    },
-                    icon: const Icon(Icons.print),
-                    label: const Text('Print QR Code'),
-                  ),
+ElevatedButton.icon(
+  onPressed: () {
+    try {
+      // Create a hidden iframe
+      final iframe = html.IFrameElement()
+        ..style.display = 'none'
+        ..srcdoc = '''
+          <html>
+            <head>
+              <title>Print QR Code</title>
+              <style>
+                body {
+                  margin: 0;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  height: 100vh;
+                }
+                img {
+                  max-width: 80%;
+                  max-height: 80%;
+                }
+              </style>
+            </head>
+            <body>
+              <img src="$qrCodeUrl" onload="window.print();">
+            </body>
+          </html>
+        ''';
+
+      // Add iframe to the DOM
+      html.document.body?.append(iframe);
+
+      // Remove iframe after printing
+      iframe.onLoad.listen((_) {
+        Future.delayed(const Duration(seconds: 2), () {
+          iframe.remove();
+        });
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error printing QR code: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  },
+  icon: const Icon(Icons.print),
+  label: const Text('Print QR Code'),
+),
                 ],
               ),
               const SizedBox(height: 16),
