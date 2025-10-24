@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
@@ -49,7 +51,13 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
       .replaceAll("'", '&#039;');
   }
 
-  String _generateHtmlForReports(List<QueryDocumentSnapshot> reports) {
+  Future<String> _imageToBase64(String assetPath) async {
+    final ByteData bytes = await rootBundle.load(assetPath);
+    final Uint8List list = bytes.buffer.asUint8List();
+    return base64Encode(list);
+  }
+
+  String _generateHtmlForReports(List<QueryDocumentSnapshot> reports, String leftImageBase64, String rightImageBase64) {
     final buffer = StringBuffer();
     final formatter = DateFormat('MMMM d, yyyy h:mm a');
     
@@ -115,6 +123,14 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
         </head>
         <body>
           <div class="report-header">
+            <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 16px; border-bottom: 2px solid #000; padding-bottom: 12px;">
+              <img src="data:image/png;base64,$leftImageBase64" alt="Logo" style="height: 60px; margin-right: 20px;">
+              <div style="text-align: center;">
+                <h1 style="margin: 0; font-size: 20px; color: red;">CITY OF OROQUIETA</h1>
+                <h2 style="margin: 4px 0; font-size: 16px;">BARANGAY MOBOD</h2>
+              </div>
+              <img src="data:image/png;base64,$rightImageBase64" alt="Logo" style="height: 60px; margin-left: 20px;">
+            </div>
             <h1>Tanod Reports Summary</h1>
             <p class="timestamp">Generated on ${formatter.format(DateTime.now())}</p>
             <p>Total Reports: ${reports.length}</p>
@@ -265,8 +281,12 @@ class _TanodReportsScreenState extends State<TanodReportsScreen> {
                       return;
                     }
 
+                    // Load images and convert to base64
+                    final leftImageBase64 = await _imageToBase64('images/logo-v2.png');
+                    final rightImageBase64 = await _imageToBase64('images/mobod.jpg');
+
                     // Print directly without confirmation
-                    final html = _generateHtmlForReports(snapshot.docs);
+                    final html = _generateHtmlForReports(snapshot.docs, leftImageBase64, rightImageBase64);
                     try {
                       await WebPrinting.printHtml(html);
                     } catch (e) {

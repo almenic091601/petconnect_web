@@ -72,6 +72,8 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+    - assets/images/logo-v2.png
+    - assets/images/mobod.jpg
     - assets/images/pet1.png
     - assets/images/pet2.png
     - assets/images/pet3.png
