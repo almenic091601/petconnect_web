@@ -1,7 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server/gmail.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:html' as html;
 import 'package:universal_html/html.dart' as html;
@@ -144,6 +149,7 @@ class _PetsManagementScreenState extends State<PetsManagementScreen>
                           breed: data['breed'] ?? 'N/A',
                           type: data['type'] ?? 'Other',
                           ownerName: data['ownerName'] ?? 'N/A',
+                          ownerContact: data['ownerContact'] ?? 'N/A',
                           dateOfBirth: dateOfBirth,
                           location: data['location'] ?? 'N/A',
                           qrCode: data['qrCode'] ?? '',
@@ -1096,14 +1102,14 @@ ElevatedButton.icon(
 
       // Format the QR code data in a structured way
       final formattedData = '''
-Pet ID: ${request.id}
-Pet Name: ${requestData['petName']}
-Owner: ${requestData['ownerName']}
-Type: ${requestData['petType']}
-Breed: ${requestData['breed']}
-Birth Date: ${birthDate.toIso8601String().split('T')[0]}
-Vaccination: ${requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated'}
-''';
+      Pet ID: ${request.id}
+      Pet Name: ${requestData['petName']}
+      Owner: ${requestData['ownerName']}
+      Type: ${requestData['petType']}
+      Breed: ${requestData['breed']}
+      Birth Date: ${birthDate.toIso8601String().split('T')[0]}
+      Vaccination: ${requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated'}
+      ''';
 
       // Generate QR code image
       final qrCode = QrCode.fromData(
@@ -1137,17 +1143,7 @@ Vaccination: ${requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated'}
       if (byteData == null) throw Exception('Failed to generate QR code image');
       final imageData = byteData.buffer.asUint8List();
 
-      // Upload QR code image to Firebase Storage
-      final qrCodeRef = FirebaseStorage.instance.ref().child(
-          'qr_codes/${request.id}_${DateTime.now().millisecondsSinceEpoch}.png');
-
-      await qrCodeRef.putData(
-        imageData,
-        SettableMetadata(contentType: 'image/png'),
-      );
-
-      // Get the download URL
-      final qrCodeUrl = await qrCodeRef.getDownloadURL();
+      final base64Qr = base64Encode(imageData);
 
       // Create a new pet document with QR code
       await _firestore.collection('pets').add({
@@ -1157,7 +1153,7 @@ Vaccination: ${requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated'}
         'breed': requestData['breed'],
         'dateOfBirth': Timestamp.fromDate(birthDate),
         'location': requestData['ownerAddress'],
-        'qrCode': qrCodeUrl,
+        'qrCode': base64Qr,
         'qrData': formattedData, // Store the formatted data
         'vaccinationStatus':
             requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated',
@@ -1171,14 +1167,68 @@ Vaccination: ${requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated'}
       await _firestore.collection('petRequests').doc(request.id).update({
         'status': 'accepted',
         'processedDate': Timestamp.now(),
-        'qrCodeUrl': qrCodeUrl,
+        'qrCodeUrl': base64Qr,
       });
+  
+      try {
+      // Extract owner details from requestData
+      final String ownerPhone = requestData['ownerPhone'];
+      final String ownerName = requestData['ownerName'];
+      final String petName = requestData['petName'];
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text(
-                'Pet registration request accepted and QR code generated')),
+      const String apiUrl = 'https://api.textbee.dev/api/v1/gateway/devices/6902b5d112fbef4cf6a86d3d/send-sms';
+
+      final Map<String, String> headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': 'e8966240-53b5-4a33-8381-6389472d7595',
+      };
+
+      final Map<String, dynamic> body = {
+        'recipients': [ownerPhone],
+        'message': '''
+          Hi $ownerName,
+
+          Thank you for registering with PetConnect: Smart Pet Registration with QR and Tracker Technology.
+
+          Your pet - $petName - has been accepted. You can now:
+          ✅ Add and update your pet’s information
+          ✅ Use your QR code for easy pet identification
+          ✅ Receive alerts and updates about your pet’s location
+
+          We’re happy to have you as part of the PetConnect community!
+          '''
+      };
+
+       final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: headers,
+        body: jsonEncode(body),
       );
+
+      if (response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pet accepted and SMS sent to owner')),
+        );
+        if (kDebugMode) {
+          print('SMS sent successfully: ${response.body}');
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send SMS. Error: ${response.body}')),
+        );
+        if (kDebugMode) {
+          print('Error sending SMS: ${response.statusCode} ${response.body}');
+        }
+      }
+
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error occurred: $e')),
+        );
+        if (kDebugMode) {
+        print('Exception: $e');
+      }
+    }
     } catch (e) {
       if (kDebugMode) {
         print('Error accepting request: $e');
@@ -1227,9 +1277,9 @@ Vaccination: ${requestData['isVaccinated'] ? 'Vaccinated' : 'Not Vaccinated'}
   }
 
   Future<Widget> _buildPetAvatar(String photoUrl) async {
-    if (kDebugMode) {
-      print('Original photo URL: $photoUrl');
-    }
+    // if (kDebugMode) {
+    //   print('Original photo URL: $photoUrl');
+    // }
 
     if (photoUrl.isEmpty) {
       if (kDebugMode) {
@@ -1330,6 +1380,7 @@ class Pet {
   final String breed;
   final String type;
   final String ownerName;
+  final String ownerContact;
   final DateTime dateOfBirth;
   final String location;
   final String qrCode;
@@ -1343,6 +1394,7 @@ class Pet {
     required this.type,
     required this.ownerName,
     required this.dateOfBirth,
+    required this.ownerContact,
     required this.location,
     required this.qrCode,
     required this.vaccinationStatus,
