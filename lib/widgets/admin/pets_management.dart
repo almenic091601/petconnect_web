@@ -1186,19 +1186,18 @@ ElevatedButton.icon(
       final Map<String, dynamic> body = {
         'recipients': [ownerPhone],
         'message': '''
-          Hi $ownerName,
+Hi $ownerName,
 
-          Thank you for registering with PetConnect: Smart Pet Registration with QR and Tracker Technology.
+Thank you for registering with PetConnect: Smart Pet Registration with QR and Tracker Technology.
 
-          Your pet - $petName - has been accepted. You can now:
-          ✅ Add and update your pet’s information
-          ✅ Use your QR code for easy pet identification
-          ✅ Receive alerts and updates about your pet’s location
+Your pet - $petName - has been accepted. You can now:
+✅ Add and update your pet’s information
+✅ Use your QR code for easy pet identification
+✅ Receive alerts and updates about your pet’s location
 
-          We’re happy to have you as part of the PetConnect community!
-          '''
-      };
-
+We’re happy to have you as part of the PetConnect community!
+'''
+};
        final response = await http.post(
         Uri.parse(apiUrl),
         headers: headers,
